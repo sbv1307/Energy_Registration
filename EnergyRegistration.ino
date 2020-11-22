@@ -4,6 +4,9 @@
  * 
  * Upon a HTTP GET request (http://<Arduino IP address>/pushToGoogle), the sketch will return a webpage, showing the current meter valeus, 
  * and initiate a HTTP GET request towards a webHook (webHookServer), with the meter values, as the GET query values. 
+ * Due to limited capacity the HTTP GET request for the webHook is hardcoded in this version. The request is:
+ * GET /energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString=<Value for meter 1>,<Value for meter 2>,....<Value for meter7>
+ * http://192.168.10.102/energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString=279.97,752.04,260.03,441.21,806.67,1.08,3362.79
  * 
  * A HTTP GET meterValue request (http://<Arduino IP address>/meterValue) will return a webpage showing the current meter valeus.
  * 
@@ -20,13 +23,14 @@
  * Created:
  * 2020-11-19
  */
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.1.1"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.1.2"
 
 /*
  * Future modifications / add-on's
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
  * Version history
+ * 0.1.2 - Change in HTML presentation of energy meter values. Changed from: "Meter <n>" to a more describing text. e.g. "Værksted"
  * 0.1.1 - Web server and web client funktionality added.
  * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
  * 
@@ -421,12 +425,15 @@ void loop() {
  *  
  *  
  */
+        char *energyMeter[] = { P("Kontor 1. "), P("Værksted  "), P("Garage    "), P("Bryggers  "), P("Kontor    "), P("Kraft     "), P("varmepumpe")};
         if ( reqToPush == true)
           localWebClient.println(P("<HTML><head><title>PostToGoogle</title></head><body><h1>Posting following to to Google Sheets</h1>"));
         else
           localWebClient.println(P("<HTML><head><title>MeterValues</title></head><body><h1>Energy meter values</h1>"));
         for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-          localWebClient.println(P("<br><b>Meter </b>"));
+          localWebClient.println(P("<br><b>"));
+          localWebClient.println(energyMeter[ii]);
+          localWebClient.println(P(" </b>"));
           localWebClient.println(ii + 1);
           localWebClient.println(P("<b>:  </b>"));
           localWebClient.println(meterData.kWhTotal[ii]);
