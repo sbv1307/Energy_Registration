@@ -30,7 +30,7 @@
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
  * Version history
- * 0.1.2 - Change in HTML presentation of energy meter values. Changed from: "Meter <n>" to a more describing text. e.g. "Værksted"
+ * 0.1.2 - Change in HTML presentation of energy meter values. Describing text. e.g. "Værksted" added to the informaiotn: "Meter <n>".
  * 0.1.1 - Web server and web client funktionality added.
  * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
  * 
@@ -431,11 +431,11 @@ void loop() {
         else
           localWebClient.println(P("<HTML><head><title>MeterValues</title></head><body><h1>Energy meter values</h1>"));
         for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-          localWebClient.println(P("<br><b>"));
-          localWebClient.println(energyMeter[ii]);
-          localWebClient.println(P(" </b>"));
+          localWebClient.println(P("<br><b>Meter </b>"));
           localWebClient.println(ii + 1);
-          localWebClient.println(P("<b>:  </b>"));
+          localWebClient.println(P("<b> (</b>"));
+          localWebClient.println(energyMeter[ii]);
+          localWebClient.println(P("<b>):  </b>"));
           localWebClient.println(meterData.kWhTotal[ii]);
         }
         // max length:    -----------------------------------------------------------------------------------------------------------------------------------------------------  (149 chars)
