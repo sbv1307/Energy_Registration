@@ -1,5 +1,7 @@
 /* Verify (compile) for Arduino Ethernet
  *  
+ *  
+ *  
  * This sketch reads an open collector output on a number of Carlo Gavazzi energy meters Type EM23 DIN and/or Type EM111.
  * The sketch monitors interrupt pin 2 for a FALLING puls and then reads the defined channelPins and counts pulses for each pin.
  * 
@@ -28,11 +30,12 @@
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
  * Version history
- * 0.1.3 - Due to capacity limitations, this version build upon version 0.1.1
+ * 0.1.3 - Due to capacity limitations in version 0.1.2, this version build upon version 0.1.1
  *       - This version is to trace why pulse registrations are lost.
  *       - Screesed in the HTML <form> element form Version 0.2.1 - Makes energymeter settings much easier
  *       - Corrected BUGs in getQuery(EthernetClient localWebClient)
  *       - Error dinvestigations marked: TO_BE_REMOVED
+ *       - 
  * 0.1.1 - Web server and web client funktionality added.
  * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
  * 
@@ -371,10 +374,11 @@ pulseRegistred = false;
                                                               #endif
       digitalWrite(LED_BUILTIN, LOW);
     }
-  }
-// TO_BE_REMOVED
+  }// TO_BE_REMOVED
+
 if ( pulseRegistred == true )  {
   missedCounts++;
+pulseRegistred = false;
 }
   
 /*
