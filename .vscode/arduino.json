@@ -1,0 +1,6 @@
+{
+    "board": "arduino:avr:ethernet",
+    "programmer": "arduino:avrisp",
+    "port": "COM4",
+    "sketch": "EnergyRegistration.ino"
+}

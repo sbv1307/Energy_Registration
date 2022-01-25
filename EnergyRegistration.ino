@@ -33,9 +33,11 @@
  * 0.1.3 - Due to capacity limitations in version 0.1.2, this version build upon version 0.1.1
  *       - This version is to trace why pulse registrations are lost.
  *       - Screesed in the HTML <form> element form Version 0.2.1 - Makes energymeter settings much easier
+ *       - Dividing entered metervalues by 100, to avodi having to enter dicimal point (a dot) when enter metervalues
  *       - Corrected BUGs in getQuery(EthernetClient localWebClient)
  *       - Error dinvestigations marked: TO_BE_REMOVED
- *       - 
+ *       - Added further #ifdef sections.
+ *       - Inserted a function call to setMeterDataDefaults in function getQuery. If Metervalue for Meter 1 is nigative, metervalues are reset
  * 0.1.1 - Web server and web client funktionality added.
  * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
  * 
@@ -139,9 +141,6 @@ struct data_t
 
 volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable used in interruptfunction
 
-// TO_BE REMOVED
-volatile boolean pulseRegistred;
-int missedCounts;
 /*
  * ###################################################################################################
  *                       F  U  N  C  T  I  O  N      D  E  F  I  N  I  T  I  O  N  S
@@ -180,8 +179,11 @@ void setMeterDataDefaults() {
 void getQuery(EthernetClient localWebClient) {
   int meterNumber = localWebClient.parseInt();
   if ( 1 <= meterNumber && meterNumber <= NO_OF_CHANNELS ) {
-    float meterValue = localWebClient.parseFloat();
-    if ( 0.0 < meterValue && meterValue < 99999.99) {
+    float meterValue = localWebClient.parseFloat()  / 100.00;
+// TO_BE_REMOVED : to reset metervalues during test / evaluation
+if ( meterNumber == 1 && meterValue < 0.0)
+  setMeterDataDefaults();
+     if ( 0.0 <= meterValue && meterValue < 99999.99) {
       meterData.kWhTotal[meterNumber - 1] = (double)meterValue;
                                                               #ifdef WEB_DEBUG
                                                               Serial.print(P("\n\nMeter Number: "));
@@ -254,7 +256,6 @@ void updateGoogleSheets() {
  */
 
 void readChannelPins() {
-  pulseRegistred = true;
   while ( !digitalRead(INTERRUPT_PIN)) { 
     for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
       if (channelState[ii]) {
@@ -315,6 +316,16 @@ void setup() {
   if ( meterData.structureVersion != 10 * DATA_STRUCTURE_VERSION + NO_OF_CHANNELS) 
     setMeterDataDefaults();
 
+// TO_BE_REMOVED : Reset couters
+                                                              #ifdef COUNT_DEBUG
+                                                                  for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
+                                                                    meterData.kWhTotal[ii] = 0.00;
+                                                                    meterData.kWhPeriod[ii] = 0.00;
+                                                                  }
+                                                              #endif
+// TO_BE_REMOVED  (END)
+
+
 /*
  * Initiate Ethernet connection
  * Static IP is used to reduce sketch size
@@ -334,9 +345,6 @@ void setup() {
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), readChannelPins, FALLING);
 
-// TO_BE_REMOVED
-pulseRegistred = false;
-missedCounts = 0;
   digitalWrite(LED_BUILTIN, LOW);
 }
 
@@ -359,14 +367,14 @@ void loop() {
  
   for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
     if ( !channelState[ii]) {
-// TO_BE_REMOVE
-pulseRegistred = false;      
       channelState[ii] = HIGH;
       digitalWrite(LED_BUILTIN, HIGH);
       meterData.kWhTotal[ii] += 1.000 / (double)PPKW[ii];
       meterData.kWhPeriod[ii] += 1.000 / (double)PPKW[ii];
       int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
                                                               #ifdef COUNT_DEBUG
+                                                              if ( ii == 0)
+                                                                Serial.println();
                                                               Serial.print(P("Total kWh for channel "));
                                                               Serial.print( ii +1);
                                                               Serial.print(P(": "));
@@ -374,12 +382,7 @@ pulseRegistred = false;
                                                               #endif
       digitalWrite(LED_BUILTIN, LOW);
     }
-  }// TO_BE_REMOVED
-
-if ( pulseRegistred == true )  {
-  missedCounts++;
-pulseRegistred = false;
-}
+  }
   
 /*
  * >>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -449,14 +452,12 @@ pulseRegistred = false;
         else
           localWebClient.println(P("<HTML><head><title>MeterValues</title></head><body><h1>Energy meter values</h1>"));
 
-// TO_BE REMOVED
-localWebClient.println(P("<br><b>Missed counts: </b>"));
-localWebClient.println(missedCounts);
         for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
           localWebClient.println(P("<br><b>Meter </b>"));
           localWebClient.println(ii + 1);
           localWebClient.println(P("<b>:  </b>"));
-          localWebClient.println(meterData.kWhTotal[ii]);
+          localWebClient.println(meterData.kWhTotal[ii], 3);
+// TO_BE_REMOVED : print 3 digits                      ^^^          
           localWebClient.print(P("<form action='/meterValue?' method='GET'>New value: <input type=text name='meter"));
           char meter[2];
           sprintf(meter, "%i", ii + 1);
