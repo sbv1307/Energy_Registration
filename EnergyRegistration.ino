@@ -23,13 +23,18 @@
  * Created:
  * 2020-11-19
  */
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.1.3"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.1.4"
 
 /*
  * Future modifications / add-on's
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
  * Version history
+ * 0.1.4 - In an attempt to investigate lost registrations, writing every update to SD will be changed (changes marked // V0.1.4_change):
+ *         1 - Remove SD update after each pulsecount marked: // V0.1.4_change (1)
+ *         2 - SD is updated after each call to HTTP GET meterValue request (http://<Arduino IP address>/meterValue) marked: // V0.1.4_change (2)
+ *         3 - Flashing the LED_BUILTI has handeled by the time it took to write to SD. Flashing LED_BUILTI will be handled by calls to millis() marked : // V0.1.4_change (3)
+ * 
  * 0.1.3 - Due to capacity limitations in version 0.1.2, this version build upon version 0.1.1
  *       - This version is to trace why pulse registrations are lost.
  *       - Screesed in the HTML <form> element form Version 0.2.1 - Makes energymeter settings much easier
@@ -126,6 +131,7 @@ EthernetServer localWebServer(ONBOARD_WEB_SERVER_PORT);
  *                       V  A  R  I  A  B  L  E      D  E  F  I  N  A  I  T  O  N  S
  *  #####################################################################################################################
  */
+
 
 int PPKW[NO_OF_CHANNELS];    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
 
@@ -359,7 +365,9 @@ void setup() {
  */
 void loop() {
   boolean reqToPush = false;
-  
+// V0.1.4_change (3)
+unsigned long led_Buildin_On;
+
 /*
  * >>>>>>>>>>>>>>>>>>>>>>>>>  C o u n i n g    m o d u l e   -   B E G I N     <<<<<<<<<<<<<<<<<<<<<<<
  */
@@ -369,9 +377,12 @@ void loop() {
     if ( !channelState[ii]) {
       channelState[ii] = HIGH;
       digitalWrite(LED_BUILTIN, HIGH);
+// V0.1.4_change (3)
+led_Buildin_On = millis();
+
       meterData.kWhTotal[ii] += 1.000 / (double)PPKW[ii];
       meterData.kWhPeriod[ii] += 1.000 / (double)PPKW[ii];
-      int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
+// V0.1.4_change (1)      int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
                                                               #ifdef COUNT_DEBUG
                                                               if ( ii == 0)
                                                                 Serial.println();
@@ -380,10 +391,13 @@ void loop() {
                                                               Serial.print(P(": "));
                                                               Serial.println(meterData.kWhTotal[ii], 3);
                                                               #endif
-      digitalWrite(LED_BUILTIN, LOW);
+// V0.1.4_change (3)      digitalWrite(LED_BUILTIN, LOW);
     }
   }
-  
+
+if (millis() > led_Buildin_On + 150)
+  digitalWrite(LED_BUILTIN, LOW);
+
 /*
  * >>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
  */
@@ -468,6 +482,9 @@ void loop() {
         }
         // max length:    -----------------------------------------------------------------------------------------------------------------------------------------------------  (149 chars)
         localWebClient.println(P("</body></html>"));
+
+// V0.1.4_change (2)      
+int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
 
         // Exit the loot
         break;
