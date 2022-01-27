@@ -30,7 +30,10 @@
  * Future modifications / add-on's
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
- * - Update SD with meter data by interval e.g. for every 100 pulses, every hour, or ???
+ * - Post powerup data to google sheets (data, and the comment (Power Up))
+ * 
+ * TO_BE implemented in ver. 0.2.0:
+ * IMPORTANT==> - Update SD with meter data by interval e.g. for every 100 pulses, every hour, or ??? and remove SD Update marked: // V0.1.4_change (2)
  * Version history
  * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, thousenth's pulses vere registered. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
  *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
@@ -95,9 +98,9 @@
  *                                    D E F I N E    D E G U G G I N G
  * ######################################################################################################################################
 */
-#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
-#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
-#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
+//#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
+//#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
+//#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
 /*
  * ######################################################################################################################################
  *                       C  O  N  F  I  G  U  T  A  B  L  E       D  E  F  I  N  I  T  I  O  N  S
@@ -107,7 +110,7 @@
 #define NO_OF_CHANNELS 7   // Number of energy meters connected
 
 const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};  // define which pin numbers are used for input channels
-const int PPKW[NO_OF_CHANNELS] = {100,100,100,100,100,1000,1000};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
+const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
 
 #define DATA_STRUCTURE_VERSION 2    // Version number to verify if data read from file corrospond to current structure defination.
 #define DATA_FILE_NAME "data.dat"  //The SD Library uses short 8.3 names for files. 
@@ -147,8 +150,8 @@ EthernetServer localWebServer(ONBOARD_WEB_SERVER_PORT);
 struct data_t
    {
      int structureVersion;
-     int pulseTotal[NO_OF_CHANNELS];    // For counting total number of pulses on each Chanel
-     int pulsePeriod[NO_OF_CHANNELS];    // For counting number of pulses betseen every e-mail update (day) on each chanel
+     long pulseTotal[NO_OF_CHANNELS];    // For counting total number of pulses on each Chanel
+     long pulsePeriod[NO_OF_CHANNELS];    // For counting number of pulses betseen every e-mail update (day) on each chanel
    } meterData;
 
 volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable used in interruptfunction
@@ -182,14 +185,20 @@ void setMeterDataDefaults() {
  */
 void getQuery(EthernetClient localWebClient) {
   int meterNumber = localWebClient.parseInt();
+                                                              #ifdef WEB_DEBUG
+                                                              Serial.print(P("\nQuery GET -  Integer for meterNumber passed:  "));
+                                                              Serial.println(meterNumber);
+                                                              #endif
   if ( 1 <= meterNumber && meterNumber <= NO_OF_CHANNELS ) {
-    int meterValue = localWebClient.parseInt()  * (PPKW[meterNumber -1] / 100.00);
-                                                              #ifdef COUNT_DEBUG  // Provide the opertunity to reset all meterValues to zero by setting meter number one to zero.
+    long meterValue = localWebClient.parseInt();
+                                                              #ifdef WEB_DEBUG
+                                                              Serial.print(P("\nQuery GET -  Integer for value passed:  "));
+                                                              Serial.println(meterValue);
                                                                 if ( meterNumber == 1 && meterValue == 0)
                                                                 setMeterDataDefaults();
                                                               #endif
-     if ( 0.0 <= meterValue && meterValue < 99999.99) {
-      meterData.pulseTotal[meterNumber - 1] = meterValue;
+     if ( 0 <= meterValue && meterValue < 9999999) {
+      meterData.pulseTotal[meterNumber - 1] = meterValue * (PPKW[meterNumber - 1] / 100);
                                                               #ifdef WEB_DEBUG
                                                               Serial.print(P("\n\nMeter Number: "));
                                                               Serial.print(meterNumber);
@@ -321,15 +330,6 @@ void setup() {
   if ( meterData.structureVersion != 10 * DATA_STRUCTURE_VERSION + NO_OF_CHANNELS) 
     setMeterDataDefaults();
 
-// TO_BE_REMOVED : Reset couters
-                                                              #ifdef COUNT_DEBUG
-                                                                  for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-                                                                    meterData.pulseTotal[ii] = 0.00;
-                                                                    meterData.pulsePeriod[ii] = 0.00;
-                                                                  }
-                                                              #endif
-// TO_BE_REMOVED  (END)
-
 
 /*
  * Initiate Ethernet connection
@@ -444,7 +444,7 @@ void loop() {
 
         // "200 OK" means the resource was located on the server and the browser (or service consumer) should expect a happy response
                                                               #ifdef WEB_DEBUG
-                                                              Serial.println(P("\n\nGot Keyword sending: 200 OK\n\n"));
+                                                              Serial.println(P("\n\nGot Keyword sending: 200 OK\n"));
                                                               #endif
 /*        
  *   Send a standard http response header
@@ -459,8 +459,11 @@ void loop() {
  *  
  *  
  */
+                                                              #ifdef WEB_DEBUG
+                                                              Serial.println(P("\nSend htmp page, displaying values\n"));
+                                                              #endif
         if ( reqToPush == true)
-          localWebClient.println(P("<HTML><head><title>PostToGoogle</title></head><body><h1>Posting following to to Google Sheets</h1>"));
+          localWebClient.println(P("<HTML><head><title>PostToGoogle</title></head><body><h1>Posting following to Google Sheets</h1>"));
         else
           localWebClient.println(P("<HTML><head><title>MeterValues</title></head><body><h1>Energy meter values</h1>"));
 
@@ -469,8 +472,7 @@ void loop() {
           localWebClient.println(ii + 1);
           localWebClient.println(P("<b>:  </b>"));
           double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
-          localWebClient.println(meterTotal, 3);
-// TO_BE_REMOVED                           ^^^      This is only for verification purpose          
+          localWebClient.println(meterTotal);
           localWebClient.print(P("<form action='/meterValue?' method='GET'>New value: <input type=text name='meter"));
           char meter[2];
           sprintf(meter, "%i", ii + 1);
@@ -491,10 +493,10 @@ int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
     }
 
 /*    
- *     Not verified if localWebClient.flush() actually empties the stream, therefor explicie read all characters.
+ *     Not verified if localWebClient.flush() actually empties the stream, therefor explicite read all characters.
  */
                                                               #ifdef WEB_DEBUG  // TO_BE_REMOVED
-                                                              Serial.println(">> Reading available chars ><<<");
+                                                              Serial.println(">> Reading available chars > Verifying flush, by emptying stream <<<");
                                                               #endif
 
     while ( localWebClient.available()) {
