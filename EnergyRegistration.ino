@@ -14,6 +14,8 @@
  * Then meter value will eb entered with two dicimals, but without the decimal seperator.
  * To set energy meter number 1 to 12345,67, pass the following HTTP GET request: http://<Arduino IP address>/meterValue?meter1=1234567
  * 
+ * IP address is hardcoded to reduce memory requirement.
+ * 
  * For this sketch on privat network 192.168.10.0 and Ardhino IP address 192.168.10.146 some recogniced requests are:
  * http://192.168.10.146/pushToGoogle
  * http://192.168.10.146/meterValue
@@ -32,14 +34,14 @@
  * - Make webHookServer IP address an port number configurable.
  * - Post powerup data to google sheets (data, and the comment (Power Up))
  * 
- * TO_BE implemented in ver. 0.2.0:
- * IMPORTANT==> - Update SD with meter data by interval e.g. for every 100 pulses, every hour, or ??? and remove SD Update marked: // V0.1.4_change (2)
  * Version history
- * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, thousenth's pulses vere registered. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
+ * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
  *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
- *         SO - This version 0.2.0 will count pulses (integers).
+ *         SO - This version 0.2.0 will count pulses (integers). 
+ *         Notes to be taken here - Mixing the types long and int, can give strange results (sometimes).
  *          - Implement: Remove SD update after each pulsecount, marked: "// V0.1.4_change (1)" in ver. 0.1.4
  *          - Implement: Flashing LED_BUILTI handled by calls to millis(), marked : "// V0.1.4_change (3)" in ver. 0.1.4.
+ *          - SD Updates are done for every 10 pulses or every 30 minutes (only if pulses have been registred).
  * 0.1.4 - In an attempt to investigate lost registrations, writing every update to SD will be changed (changes marked // V0.1.4_change):
  *         1 - Remove SD update after each pulsecount marked: // V0.1.4_change (1)
  *         2 - SD is updated after each call to HTTP GET meterValue request (http://<Arduino IP address>/meterValue) marked: // V0.1.4_change (2)
@@ -82,9 +84,12 @@
 
 
 /* 
- * The interruptfunction has a catch: It enters a "while pin 2 is low" loop, and stays there, until the interrupt is released. Se further explanation in the README.md file.
+ * The interruptfunction has a catch: It enters a "while pin 2 is low" loop, and stays there, until the interrupt is released. 
+ * Se further explanation in the README.md file.
  * 
- * Values are stored on SD in order to prevent data loss in case of a poweroutage or reststart.
+ * Values are stored on SD in order to prevent too much data loss in case of a poweroutage or reststart. 
+ * In order ot prevent SC update for every signle pulse registred, Updates are done for every 10 pulses or every 30 minutes 
+ * (only if pulses have been registred)
  * 
  */
 #include <SPI.h> 
@@ -108,6 +113,9 @@
 */
 
 #define NO_OF_CHANNELS 7   // Number of energy meters connected
+
+#define SD_UPDATE_COUNTS 50  // Define how many pules to regisgter, before storing counts to SD Card
+#define TIME_BETWEEN_SD_UPDATES 1800000  // Time in millisecunds: 30 min = 30 x 60 x 1000 = 1800000 ms
 
 const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};  // define which pin numbers are used for input channels
 const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
@@ -141,8 +149,11 @@ EthernetServer localWebServer(ONBOARD_WEB_SERVER_PORT);
  *                       V  A  R  I  A  B  L  E      D  E  F  I  N  A  I  T  O  N  S
  *  #####################################################################################################################
  */
+unsigned long led_Buildin_On;
 
 
+int SD_WriteCounter;  // Counter used to derterminde when meterData are writen to
+unsigned long SD_LastUpdated;
 
 /*
  * Define structure for energy meter counters
@@ -330,6 +341,11 @@ void setup() {
   if ( meterData.structureVersion != 10 * DATA_STRUCTURE_VERSION + NO_OF_CHANNELS) 
     setMeterDataDefaults();
 
+/*
+ * Initialize variables for handling SD updates
+ */
+  SD_WriteCounter = 0;
+  SD_LastUpdated = millis();
 
 /*
  * Initiate Ethernet connection
@@ -350,6 +366,11 @@ void setup() {
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), readChannelPins, FALLING);
 
+  /*
+   * Initialize variable for blinking LED_BUILTIN on every puls registration
+   */
+  led_Buildin_On = 0;
+
   digitalWrite(LED_BUILTIN, LOW);
 }
 
@@ -364,10 +385,9 @@ void setup() {
  */
 void loop() {
   boolean reqToPush = false;
-  unsigned long led_Buildin_On;
-
 /*
  * >>>>>>>>>>>>>>>>>>>>>>>>>  C o u n i n g    m o d u l e   -   B E G I N     <<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
  */
 
  
@@ -376,6 +396,8 @@ void loop() {
       channelState[ii] = HIGH;
       led_Buildin_On = millis();
       digitalWrite(LED_BUILTIN, HIGH);
+
+      SD_WriteCounter++;
 
       meterData.pulseTotal[ii]++;
       meterData.pulsePeriod[ii]++;
@@ -393,11 +415,24 @@ void loop() {
     }
   }
 
+/*
+ * >>>>>>>>>>>>>>>>>>>>>>>>>  C o u n i n g    m o d u l e   -   E N D      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ */
+
+
   if (millis() > led_Buildin_On + 150)
     digitalWrite(LED_BUILTIN, LOW);
+  
+  if ( SD_WriteCounter >= SD_UPDATE_COUNTS  || millis() > SD_LastUpdated + TIME_BETWEEN_SD_UPDATES && SD_WriteCounter > 0 ) {
+    int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
+    SD_WriteCounter = 0;
+    SD_LastUpdated = millis();
+  }
 
 /*
- * >>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
  */
   EthernetClient localWebClient = localWebServer.available();
   
@@ -483,9 +518,6 @@ void loop() {
         }
         // max length:    -----------------------------------------------------------------------------------------------------------------------------------------------------  (149 chars)
         localWebClient.println(P("</body></html>"));
-
-// V0.1.4_change (2)      
-int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
 
         // Exit the loot
         break;
