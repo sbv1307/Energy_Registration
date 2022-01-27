@@ -5,31 +5,38 @@
  * This sketch reads an open collector output on a number of Carlo Gavazzi energy meters Type EM23 DIN and/or Type EM111.
  * The sketch monitors interrupt pin 2 for a FALLING puls and then reads the defined channelPins and counts pulses for each pin.
  * 
- * Upon a HTTP GET request (http://<Arduino IP address>/pushToGoogle), the sketch will return a webpage, showing the current meter valeus, 
+ * Upon a HTTP GET request "http://<Arduino IP address>/pushToGoogle", the sketch will return a webpage, showing the current meter valeus, 
  * and initiate a HTTP GET request towards a webHook (webHookServer), with the meter values, as the GET query values. 
  * 
- * A HTTP GET meterValue request (http://<Arduino IP address>/meterValue) will return a webpage showing the current meter valeus.
+ * A HTTP GET meterValue request "http://<Arduino IP address>/meterValue" will return a webpage showing the current meter valeus.
  * 
- * A HTTP GET meterValue?meter<n>=<n.nn>, where <n> represent the energy meter 1-7 and n.nn the actual energy meter value as readden on the meter,
- * will set the counter to the provided value for the specified energy meter.  (http://<Arduino IP address>/meterValue?meter1=12345.67)
+ * A HTTP GET meterValue?meter<n>=<nn>, where <n> represent the energy meter 1-7 and nn the actual energy meter value as readden on the meter. 
+ * Then meter value will eb entered with two dicimals, but without the decimal seperator.
+ * To set energy meter number 1 to 12345,67, pass the following HTTP GET request: http://<Arduino IP address>/meterValue?meter1=1234567
  * 
  * For this sketch on privat network 192.168.10.0 and Ardhino IP address 192.168.10.146 some recogniced requests are:
  * http://192.168.10.146/pushToGoogle
  * http://192.168.10.146/meterValue
- * http://192.168.10.146/meterValue?meter1=12345.67
+ * http://192.168.10.146/meterValue?meter1=1234567
  * 
  * The code is made specific for the Arduino Ethernet REV3 board.
  * 
  * Created:
  * 2020-11-19
  */
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.1.4"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.0"
 
 /*
  * Future modifications / add-on's
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
+ * - Update SD with meter data by interval e.g. for every 100 pulses, every hour, or ???
  * Version history
+ * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, thousenth's pulses vere registered. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
+ *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
+ *         SO - This version 0.2.0 will count pulses (integers).
+ *          - Implement: Remove SD update after each pulsecount, marked: "// V0.1.4_change (1)" in ver. 0.1.4
+ *          - Implement: Flashing LED_BUILTI handled by calls to millis(), marked : "// V0.1.4_change (3)" in ver. 0.1.4.
  * 0.1.4 - In an attempt to investigate lost registrations, writing every update to SD will be changed (changes marked // V0.1.4_change):
  *         1 - Remove SD update after each pulsecount marked: // V0.1.4_change (1)
  *         2 - SD is updated after each call to HTTP GET meterValue request (http://<Arduino IP address>/meterValue) marked: // V0.1.4_change (2)
@@ -83,10 +90,14 @@
 #include <Ethernet.h>
 #include <SPI.h>
 
-
-//#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
-//#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
-//#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
+/*
+ * ######################################################################################################################################
+ *                                    D E F I N E    D E G U G G I N G
+ * ######################################################################################################################################
+*/
+#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
+#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
+#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
 /*
  * ######################################################################################################################################
  *                       C  O  N  F  I  G  U  T  A  B  L  E       D  E  F  I  N  I  T  I  O  N  S
@@ -94,16 +105,12 @@
 */
 
 #define NO_OF_CHANNELS 7   // Number of energy meters connected
-#define NO_OF_EM23_METERS 2  // Set the number of energy meters having 100 PPKW the rest will have 1000 PPKW
 
 const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};  // define which pin numbers are used for input channels
+const int PPKW[NO_OF_CHANNELS] = {100,100,100,100,100,1000,1000};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
 
-#define DATA_STRUCTURE_VERSION 1    // Version number to verify if data read from file corrospond to current structure defination.
+#define DATA_STRUCTURE_VERSION 2    // Version number to verify if data read from file corrospond to current structure defination.
 #define DATA_FILE_NAME "data.dat"  //The SD Library uses short 8.3 names for files. 
-
-#define RANDUM_PIN A4   // TO_BE_REMOVED In order to have the sequence of values generated by random() to differ, on subsequent executions of the sketch,
-                        // randomSeed() is initialize with a random number, generator with a fairly random input, from an analogRead() on RANDUM_PIN
-                        // This fukntionality is only for debugginhg purpose. Search TO_BE_REMOVED ir commented out in prod version.
 
 #define INTERRUPT_PIN 2
 #define CHIP_SELECT_PIN 4
@@ -133,7 +140,6 @@ EthernetServer localWebServer(ONBOARD_WEB_SERVER_PORT);
  */
 
 
-int PPKW[NO_OF_CHANNELS];    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
 
 /*
  * Define structure for energy meter counters
@@ -141,8 +147,8 @@ int PPKW[NO_OF_CHANNELS];    //Variable for holding Puls Pr Kilo Watt (PPKW) for
 struct data_t
    {
      int structureVersion;
-     double kWhTotal[NO_OF_CHANNELS];    // For counting total Kilo Watt hours (KWh) on each Chanel
-     double kWhPeriod[NO_OF_CHANNELS];    // For counting number of KWh betseen every e-mail update (day) on each chanel
+     int pulseTotal[NO_OF_CHANNELS];    // For counting total number of pulses on each Chanel
+     int pulsePeriod[NO_OF_CHANNELS];    // For counting number of pulses betseen every e-mail update (day) on each chanel
    } meterData;
 
 volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable used in interruptfunction
@@ -156,14 +162,6 @@ volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable use
  * >>>>>>>>>>>>>>>>>   S E T     C O N F I G U R A T I O N   D E F A U L T S  <<<<<<<<<<<<<<<<<<<<<<<<
  * Configuration is "hardcoded" to minimize sketch size
  */
- void setConfigurationDefaults() {
-  for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-    if ( ii < NO_OF_CHANNELS - NO_OF_EM23_METERS)
-      PPKW[ii] = 1000;
-    else
-      PPKW[ii] = 100;
-    }
-}
 
 /*
  * >>>>>>>>>>>>>>>>>   S E T     M E T E R   D A T A     D E F A U L T   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -173,8 +171,8 @@ volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable use
 void setMeterDataDefaults() {
     meterData.structureVersion = 10 * DATA_STRUCTURE_VERSION + NO_OF_CHANNELS;
     for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-      meterData.kWhTotal[ii] = 0.00;    // TO_BE_REMOVED exchange "random( 1000, 9999999) / 100" with "0.00"
-      meterData.kWhPeriod[ii] = 0.00;    // TO_BE_REMOVED exchange "random( 1000, 9999999) / 100" with "0.00"
+      meterData.pulseTotal[ii] = 0;
+      meterData.pulsePeriod[ii] = 0;
     }
   int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
 }
@@ -185,17 +183,18 @@ void setMeterDataDefaults() {
 void getQuery(EthernetClient localWebClient) {
   int meterNumber = localWebClient.parseInt();
   if ( 1 <= meterNumber && meterNumber <= NO_OF_CHANNELS ) {
-    float meterValue = localWebClient.parseFloat()  / 100.00;
-// TO_BE_REMOVED : to reset metervalues during test / evaluation
-if ( meterNumber == 1 && meterValue < 0.0)
-  setMeterDataDefaults();
+    int meterValue = localWebClient.parseInt()  * (PPKW[meterNumber -1] / 100.00);
+                                                              #ifdef COUNT_DEBUG  // Provide the opertunity to reset all meterValues to zero by setting meter number one to zero.
+                                                                if ( meterNumber == 1 && meterValue == 0)
+                                                                setMeterDataDefaults();
+                                                              #endif
      if ( 0.0 <= meterValue && meterValue < 99999.99) {
-      meterData.kWhTotal[meterNumber - 1] = (double)meterValue;
+      meterData.pulseTotal[meterNumber - 1] = meterValue;
                                                               #ifdef WEB_DEBUG
                                                               Serial.print(P("\n\nMeter Number: "));
                                                               Serial.print(meterNumber);
                                                               Serial.print(P(" Value: ")); 
-                                                              Serial.println(meterData.kWhTotal[meterNumber - 1]);
+                                                              Serial.println(meterData.pulseTotal[meterNumber - 1]);
                                                               #endif
     }
   }
@@ -218,7 +217,8 @@ void updateGoogleSheets() {
     
     webHookClient.print(P("GET /energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString="));
     for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-      webHookClient.print(meterData.kWhTotal[ii]);
+      double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
+      webHookClient.print(meterTotal);
       if ( ii < NO_OF_CHANNELS - 1) {
         webHookClient.print(P(","));
       } 
@@ -254,11 +254,13 @@ void updateGoogleSheets() {
 }
 /*
  * ######################  I N T E R R U P T    F U N C T I O N  -   B E G I N     ####################
- * When a LOW pulse triggers the interrupt pin, stastus on all channals are read, as long as the pulse on the interrupt pin 
- * is active (LOW) AND the channal hasn't change to LOW.
+ * When a LOW pulse triggers the interrupt pin, status on all channels are read, as long as the pulse on the interrupt pin 
+ * is active (LOW). If a channel has been read as active (LOW), it will not be re-read.
  * Explanation:
- * When more pulses for different energy meters arrives and overlapping each other , the pulse that triggers the read of Chanels 
- * will stay active LOW. When reading the channals over and over with out "resettng" the state, that way all pulses will be read.
+ * When more pulses from different energy meters arrives and overlapping each other, the trigger pulse will stay active LOW 
+ * as long as one of the pulses from the energy meters are low. 
+ * When reading the channels over and over, without re-reading channels that allready has been read active (low), 
+ * pulses on all channels will be read
  */
 
 void readChannelPins() {
@@ -282,6 +284,7 @@ void readChannelPins() {
  */
 void setup() {
   Serial.begin(115200);
+  Serial.println(P(SKETCH_VERSION));
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
                                                               #ifdef DEBUG
@@ -294,14 +297,10 @@ void setup() {
                                                                 ;  // In order to prevent unattended execution, wait for [Enter].
                                                               }
                                                               #endif
-  for (int ii=0; ii < NO_OF_CHANNELS; ii++) {  // Initialize input channels - and counters
+  for (int ii=0; ii < NO_OF_CHANNELS; ii++) {  // Initialize input channels - and counter flagss
     pinMode(channelPin[ii], INPUT_PULLUP);
     channelState[ii] = HIGH;
   }
-
-
-  setConfigurationDefaults();  // Initialize PPKW values
-
 
 /*
  * Setup SD card communication ad see if card is present and can be initialized
@@ -325,8 +324,8 @@ void setup() {
 // TO_BE_REMOVED : Reset couters
                                                               #ifdef COUNT_DEBUG
                                                                   for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-                                                                    meterData.kWhTotal[ii] = 0.00;
-                                                                    meterData.kWhPeriod[ii] = 0.00;
+                                                                    meterData.pulseTotal[ii] = 0.00;
+                                                                    meterData.pulsePeriod[ii] = 0.00;
                                                                   }
                                                               #endif
 // TO_BE_REMOVED  (END)
@@ -365,8 +364,7 @@ void setup() {
  */
 void loop() {
   boolean reqToPush = false;
-// V0.1.4_change (3)
-unsigned long led_Buildin_On;
+  unsigned long led_Buildin_On;
 
 /*
  * >>>>>>>>>>>>>>>>>>>>>>>>>  C o u n i n g    m o d u l e   -   B E G I N     <<<<<<<<<<<<<<<<<<<<<<<
@@ -376,27 +374,27 @@ unsigned long led_Buildin_On;
   for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
     if ( !channelState[ii]) {
       channelState[ii] = HIGH;
+      led_Buildin_On = millis();
       digitalWrite(LED_BUILTIN, HIGH);
-// V0.1.4_change (3)
-led_Buildin_On = millis();
 
-      meterData.kWhTotal[ii] += 1.000 / (double)PPKW[ii];
-      meterData.kWhPeriod[ii] += 1.000 / (double)PPKW[ii];
-// V0.1.4_change (1)      int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
+      meterData.pulseTotal[ii]++;
+      meterData.pulsePeriod[ii]++;
                                                               #ifdef COUNT_DEBUG
                                                               if ( ii == 0)
                                                                 Serial.println();
-                                                              Serial.print(P("Total kWh for channel "));
+                                                              Serial.print(P("Total pulses / kWh for channel "));
                                                               Serial.print( ii +1);
                                                               Serial.print(P(": "));
-                                                              Serial.println(meterData.kWhTotal[ii], 3);
+                                                              Serial.print(meterData.pulseTotal[ii]);
+                                                              Serial.print(P(" / "));
+                                                              double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
+                                                              Serial.println(meterTotal, 3);
                                                               #endif
-// V0.1.4_change (3)      digitalWrite(LED_BUILTIN, LOW);
     }
   }
 
-if (millis() > led_Buildin_On + 150)
-  digitalWrite(LED_BUILTIN, LOW);
+  if (millis() > led_Buildin_On + 150)
+    digitalWrite(LED_BUILTIN, LOW);
 
 /*
  * >>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -470,8 +468,9 @@ if (millis() > led_Buildin_On + 150)
           localWebClient.println(P("<br><b>Meter </b>"));
           localWebClient.println(ii + 1);
           localWebClient.println(P("<b>:  </b>"));
-          localWebClient.println(meterData.kWhTotal[ii], 3);
-// TO_BE_REMOVED : print 3 digits                      ^^^          
+          double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
+          localWebClient.println(meterTotal, 3);
+// TO_BE_REMOVED                           ^^^      This is only for verification purpose          
           localWebClient.print(P("<form action='/meterValue?' method='GET'>New value: <input type=text name='meter"));
           char meter[2];
           sprintf(meter, "%i", ii + 1);
