@@ -30,7 +30,7 @@
  * Created:
  * 2020-11-19
 
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.0"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.1"
 
 
 /*
@@ -39,6 +39,7 @@
  * - Make webHookServer IP address an port number configurable.
  * - Post powerup data to google sheets (data, and the comment (Power Up))
  * 
+ * 0.2.1 - Cleaning up entries used for verifying pulscounts - No functional changes.
  * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
  *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
  *         SO - This version 0.2.0 will count pulses (integers). 
@@ -212,26 +213,10 @@ void setMeterDataDefaults() {
  */
 void getQuery(EthernetClient localWebClient) {
   int meterNumber = localWebClient.parseInt();
-                                                              #ifdef WEB_DEBUG
-                                                              Serial.print(P("\nQuery GET -  Integer for meterNumber passed:  "));
-                                                              Serial.println(meterNumber);
-                                                              #endif
   if ( 1 <= meterNumber && meterNumber <= NO_OF_CHANNELS ) {
     long meterValue = localWebClient.parseInt();
-                                                              #ifdef WEB_DEBUG
-                                                              Serial.print(P("\nQuery GET -  Integer for value passed:  "));
-                                                              Serial.println(meterValue);
-                                                                if ( meterNumber == 1 && meterValue == 0)
-                                                                setMeterDataDefaults();
-                                                              #endif
      if ( 0 <= meterValue && meterValue < 9999999) {
       meterData.pulseTotal[meterNumber - 1] = meterValue * (PPKW[meterNumber - 1] / 100);
-                                                              #ifdef WEB_DEBUG
-                                                              Serial.print(P("\n\nMeter Number: "));
-                                                              Serial.print(meterNumber);
-                                                              Serial.print(P(" Value: ")); 
-                                                              Serial.println(meterData.pulseTotal[meterNumber - 1]);
-                                                              #endif
     }
   }
 }
@@ -247,10 +232,6 @@ void updateGoogleSheets() {
  * if there is a successful connetion post data. Otherwise print return code  
  */
   if ( int returncode = webHookClient.connect(webHookServer, HTTP_PORT_NUMBER) == 1) {
-                                                              #ifdef WEB_DEBUG
-                                                              Serial.println(P("connected... Sending:"));
-                                                              #endif
-    
     webHookClient.print(P("GET /energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString="));
     for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
       double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
@@ -271,22 +252,9 @@ void updateGoogleSheets() {
      */
     while (webHookClient.available()) {
       char c = webHookClient.read();
-                                                              #ifdef WEB_DEBUG
-                                                              Serial.print(c);
-                                                              #endif
     }
-    
-                                                              #ifdef WEB_DEBUG
-                                                              Serial.println(P("\ndisconnecting..."));
-                                                              #endif
     webHookClient.stop();
   } 
-                                                              #ifdef WEB_DEBUG
-                                                              else {
-                                                                Serial.print(P("connection failed: "));
-                                                                Serial.println(returncode);
-                                                              }
-                                                              #endif
 }
 /*
  * ######################  I N T E R R U P T    F U N C T I O N  -   B E G I N     ####################
@@ -547,19 +515,9 @@ void loop() {
 /*    
  *     Not verified if localWebClient.flush() actually empties the stream, therefor explicite read all characters.
  */
-                                                              #ifdef WEB_DEBUG  // TO_BE_REMOVED
-                                                              Serial.println(">> Reading available chars > Verifying flush, by emptying stream <<<");
-                                                              #endif
-
     while ( localWebClient.available()) {
       char c = localWebClient.read();
-                                                              #ifdef WEB_DEBUG  // TO_BE_REMOVED
-                                                              Serial.print(c);
-                                                              #endif
     }
-                                                              #ifdef WEB_DEBUG  // TO_BE_REMOVED
-                                                              Serial.println("<<<< Available chars read >>>");
-                                                              #endif
     localWebClient.flush();
     localWebClient.stop();
   }  //>>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     E N D    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
