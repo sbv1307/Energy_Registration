@@ -5,8 +5,12 @@
  * This sketch reads an open collector output on a number of Carlo Gavazzi energy meters Type EM23 DIN and/or Type EM111.
  * The sketch monitors interrupt pin 2 for a FALLING puls and then reads the defined channelPins and counts pulses for each pin.
  * 
+
  * Upon a HTTP GET request "http://<Arduino IP address>/pushToGoogle", the sketch will return a webpage, showing the current meter valeus, 
  * and initiate a HTTP GET request towards a webHook (webHookServer), with the meter values, as the GET query values. 
+ * Due to limited capacity the HTTP GET request for the webHook is hardcoded in this version. The request is:
+ * GET /energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString=<Value for meter 1>,<Value for meter 2>,....<Value for meter7>
+ * http://192.168.10.102/energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString=279.97,752.04,260.03,441.21,806.67,1.08,3362.79
  * 
  * A HTTP GET meterValue request "http://<Arduino IP address>/meterValue" will return a webpage showing the current meter valeus.
  * 
@@ -25,8 +29,9 @@
  * 
  * Created:
  * 2020-11-19
- */
+
 #define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.0"
+
 
 /*
  * Future modifications / add-on's
@@ -34,7 +39,6 @@
  * - Make webHookServer IP address an port number configurable.
  * - Post powerup data to google sheets (data, and the comment (Power Up))
  * 
- * Version history
  * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
  *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
  *         SO - This version 0.2.0 will count pulses (integers). 
@@ -55,10 +59,15 @@
  *       - Error dinvestigations marked: TO_BE_REMOVED
  *       - Added further #ifdef sections.
  *       - Inserted a function call to setMeterDataDefaults in function getQuery. If Metervalue for Meter 1 is nigative, metervalues are reset
+ * 0.1.2 - N O T E !!!! - Changes exceeded limit for: Low memory available, stability problems may occur.
+ *         Change in HTML presentation of energy meter values. Describing text. e.g. "Værksted" added to the informaiotn: "Meter <n>".
+ *       - Introduces IP configuration for Arduino Ethernet shield attached to Arduino UNO. Define ARDUINO_UNO_DEBUG
  * 0.1.1 - Web server and web client funktionality added.
  * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
  * 
- **** Ardhino Pin definition/layout:***
+ * 
+ * 
+ **** Ardhino Ethernet REV3 Pin definition/layout:***
  * Pin  0: Serial RX
  * Pin  1: Serial TX
  * Pin  2: Interrupt pin for counting pulses.
@@ -98,6 +107,7 @@
 #include <Ethernet.h>
 #include <SPI.h>
 
+
 /*
  * ######################################################################################################################################
  *                                    D E F I N E    D E G U G G I N G
@@ -106,6 +116,7 @@
 //#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
 //#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
 //#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
+
 /*
  * ######################################################################################################################################
  *                       C  O  N  F  I  G  U  T  A  B  L  E       D  E  F  I  N  I  T  I  O  N  S
@@ -137,8 +148,13 @@ const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variab
 char p_buffer[150];
 #define P(str) (strcpy_P(p_buffer, PSTR(str)), p_buffer)
 
-byte mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x63, 0x15 };  // MAC address for Arduino Ethernet board
-IPAddress ip( 192, 168, 10, 146);                     // IP address for Arduino Ethernet board 
+                                                                    #ifdef  ARDUINO_UNO_DEBUG  //overwrite configuration for Arduino Ethernet REV3 board
+                                                                      byte mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x34, 0xF9};  //Ethernet Shield (Arduino)
+                                                                      IPAddress ip( 192, 168, 10, 123); // Ethernet Shield (Arduino)               
+                                                                    #else
+byte mac[] = { 0x90, 0xA2, 0xDA, 0x0D, 0x63, 0x15 };  // MAC address for Arduino Ethernet REV3 board
+IPAddress ip( 192, 168, 10, 146);                     // IP address for Arduino Ethernet REV3 board
+                                                                    #endif
 IPAddress webHookServer( 192, 168, 10, 102);          // Local IP address for web server on QNAP-NAS-2 (192.168.10.x) NAP-NAS-2 
 
 EthernetClient webHookClient;
@@ -494,15 +510,18 @@ void loop() {
  *  
  *  
  */
+
                                                               #ifdef WEB_DEBUG
                                                               Serial.println(P("\nSend htmp page, displaying values\n"));
                                                               #endif
+
         if ( reqToPush == true)
           localWebClient.println(P("<HTML><head><title>PostToGoogle</title></head><body><h1>Posting following to Google Sheets</h1>"));
         else
           localWebClient.println(P("<HTML><head><title>MeterValues</title></head><body><h1>Energy meter values</h1>"));
 
         for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
+
           localWebClient.println(P("<br><b>Meter </b>"));
           localWebClient.println(ii + 1);
           localWebClient.println(P("<b>:  </b>"));
@@ -514,6 +533,7 @@ void loop() {
           localWebClient.print(meter);
           localWebClient.println(P("'/> <input type=submit value='Opdater'/></form>"));
 // No endtag for <br> !?          localWebClient.println(P("</br>"));
+
 
         }
         // max length:    -----------------------------------------------------------------------------------------------------------------------------------------------------  (149 chars)
