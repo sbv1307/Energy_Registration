@@ -1,39 +1,67 @@
-/*
+/* Verify (compile) for Arduino Ethernet
+ *  
+ *  
+ *  
  * This sketch reads an open collector output on a number of Carlo Gavazzi energy meters Type EM23 DIN and/or Type EM111.
  * The sketch monitors interrupt pin 2 for a FALLING puls and then reads the defined channelPins and counts pulses for each pin.
  * 
- * Upon a HTTP GET request (http://<Arduino IP address>/pushToGoogle), the sketch will return a HTML webpage, showing the current meter valeus, 
+
+ * Upon a HTTP GET request "http://<Arduino IP address>/pushToGoogle", the sketch will return a webpage, showing the current meter valeus, 
  * and initiate a HTTP GET request towards a webHook (webHookServer), with the meter values, as the GET query values. 
  * Due to limited capacity the HTTP GET request for the webHook is hardcoded in this version. The request is:
  * GET /energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString=<Value for meter 1>,<Value for meter 2>,....<Value for meter7>
  * http://192.168.10.102/energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString=279.97,752.04,260.03,441.21,806.67,1.08,3362.79
  * 
- * A HTTP GET meterValue request (http://<Arduino IP address>/meterValue) will return a webpage showing the current meter valeus.
+ * A HTTP GET meterValue request "http://<Arduino IP address>/meterValue" will return a webpage showing the current meter valeus.
  * 
- * A HTTP GET meterValue?meter<n>=<n.nn>, where <n> represent the energy meter 1-7 and n.nn the actual energy meter value as readden on the meter,
- * will set the counter to the provided value for the specified energy meter.  (http://<Arduino IP address>/meterValue?meter1=12345.67)
+ * A HTTP GET meterValue?meter<n>=<nn>, where <n> represent the energy meter 1-7 and nn the actual energy meter value as readden on the meter. 
+ * Then meter value will eb entered with two dicimals, but without the decimal seperator.
+ * To set energy meter number 1 to 12345,67, pass the following HTTP GET request: http://<Arduino IP address>/meterValue?meter1=1234567
+ * 
+ * IP address is hardcoded to reduce memory requirement.
  * 
  * For this sketch on privat network 192.168.10.0 and Ardhino IP address 192.168.10.146 some recogniced requests are:
  * http://192.168.10.146/pushToGoogle
  * http://192.168.10.146/meterValue
- * http://192.168.10.146/meterValue?meter1=12345.67
+ * http://192.168.10.146/meterValue?meter1=1234567
  * 
  * The code is made specific for the Arduino Ethernet REV3 board.
  * 
  * Created:
  * 2020-11-19
- */
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.1.2"
+
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.0"
+
 
 /*
  * Future modifications / add-on's
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
- * Version history
+ * - Post powerup data to google sheets (data, and the comment (Power Up))
+ * 
+ * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
+ *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
+ *         SO - This version 0.2.0 will count pulses (integers). 
+ *         Notes to be taken here - Mixing the types long and int, can give strange results (sometimes).
+ *          - Implement: Remove SD update after each pulsecount, marked: "// V0.1.4_change (1)" in ver. 0.1.4
+ *          - Implement: Flashing LED_BUILTI handled by calls to millis(), marked : "// V0.1.4_change (3)" in ver. 0.1.4.
+ *          - SD Updates are done for every 10 pulses or every 30 minutes (only if pulses have been registred).
+ * 0.1.4 - In an attempt to investigate lost registrations, writing every update to SD will be changed (changes marked // V0.1.4_change):
+ *         1 - Remove SD update after each pulsecount marked: // V0.1.4_change (1)
+ *         2 - SD is updated after each call to HTTP GET meterValue request (http://<Arduino IP address>/meterValue) marked: // V0.1.4_change (2)
+ *         3 - Flashing the LED_BUILTI has handeled by the time it took to write to SD. Flashing LED_BUILTI will be handled by calls to millis() marked : // V0.1.4_change (3)
+ * 
+ * 0.1.3 - Due to capacity limitations in version 0.1.2, this version build upon version 0.1.1
+ *       - This version is to trace why pulse registrations are lost.
+ *       - Screesed in the HTML <form> element form Version 0.2.1 - Makes energymeter settings much easier
+ *       - Dividing entered metervalues by 100, to avodi having to enter dicimal point (a dot) when enter metervalues
+ *       - Corrected BUGs in getQuery(EthernetClient localWebClient)
+ *       - Error dinvestigations marked: TO_BE_REMOVED
+ *       - Added further #ifdef sections.
+ *       - Inserted a function call to setMeterDataDefaults in function getQuery. If Metervalue for Meter 1 is nigative, metervalues are reset
  * 0.1.2 - N O T E !!!! - Changes exceeded limit for: Low memory available, stability problems may occur.
  *         Change in HTML presentation of energy meter values. Describing text. e.g. "Værksted" added to the informaiotn: "Meter <n>".
  *       - Introduces IP configuration for Arduino Ethernet shield attached to Arduino UNO. Define ARDUINO_UNO_DEBUG
- * N O T E !!!!
  * 0.1.1 - Web server and web client funktionality added.
  * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
  * 
@@ -65,9 +93,12 @@
 
 
 /* 
- * The interruptfunction has a catch: It enters a "while pin 2 is low" loop, and stays there, until the interrupt is released. Se further explanation in the README.md file.
+ * The interruptfunction has a catch: It enters a "while pin 2 is low" loop, and stays there, until the interrupt is released. 
+ * Se further explanation in the README.md file.
  * 
- * Values are stored on SD in order to prevent data loss in case of a poweroutage or reststart.
+ * Values are stored on SD in order to prevent too much data loss in case of a poweroutage or reststart. 
+ * In order ot prevent SC update for every signle pulse registred, Updates are done for every 10 pulses or every 30 minutes 
+ * (only if pulses have been registred)
  * 
  */
 #include <SPI.h> 
@@ -77,10 +108,15 @@
 #include <SPI.h>
 
 
-#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
-#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
-//#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting.
-#define ARDUINO_UNO_DEBUG  // If defined: IP configuration for Arduino Ethernet shield attached to Arduino UNO will de done instead.  
+/*
+ * ######################################################################################################################################
+ *                                    D E F I N E    D E G U G G I N G
+ * ######################################################################################################################################
+*/
+//#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
+//#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
+//#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
+
 /*
  * ######################################################################################################################################
  *                       C  O  N  F  I  G  U  T  A  B  L  E       D  E  F  I  N  I  T  I  O  N  S
@@ -88,16 +124,15 @@
 */
 
 #define NO_OF_CHANNELS 7   // Number of energy meters connected
-#define NO_OF_EM23_METERS 2  // Set the number of energy meters having 100 PPKW the rest will have 1000 PPKW
+
+#define SD_UPDATE_COUNTS 50  // Define how many pules to regisgter, before storing counts to SD Card
+#define TIME_BETWEEN_SD_UPDATES 1800000  // Time in millisecunds: 30 min = 30 x 60 x 1000 = 1800000 ms
 
 const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};  // define which pin numbers are used for input channels
+const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
 
-#define DATA_STRUCTURE_VERSION 1    // Version number to verify if data read from file corrospond to current structure defination.
+#define DATA_STRUCTURE_VERSION 2    // Version number to verify if data read from file corrospond to current structure defination.
 #define DATA_FILE_NAME "data.dat"  //The SD Library uses short 8.3 names for files. 
-
-#define RANDUM_PIN A4   // TO_BE_REMOVED In order to have the sequence of values generated by random() to differ, on subsequent executions of the sketch,
-                        // randomSeed() is initialize with a random number, generator with a fairly random input, from an analogRead() on RANDUM_PIN
-                        // This fukntionality is only for debugginhg purpose. Search TO_BE_REMOVED ir commented out in prod version.
 
 #define INTERRUPT_PIN 2
 #define CHIP_SELECT_PIN 4
@@ -130,8 +165,11 @@ EthernetServer localWebServer(ONBOARD_WEB_SERVER_PORT);
  *                       V  A  R  I  A  B  L  E      D  E  F  I  N  A  I  T  O  N  S
  *  #####################################################################################################################
  */
+unsigned long led_Buildin_On;
 
-int PPKW[NO_OF_CHANNELS];    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
+
+int SD_WriteCounter;  // Counter used to derterminde when meterData are writen to
+unsigned long SD_LastUpdated;
 
 /*
  * Define structure for energy meter counters
@@ -139,8 +177,8 @@ int PPKW[NO_OF_CHANNELS];    //Variable for holding Puls Pr Kilo Watt (PPKW) for
 struct data_t
    {
      int structureVersion;
-     double kWhTotal[NO_OF_CHANNELS];    // For counting total Kilo Watt hours (KWh) on each Chanel
-     double kWhPeriod[NO_OF_CHANNELS];    // For counting number of KWh betseen every e-mail update (day) on each chanel
+     long pulseTotal[NO_OF_CHANNELS];    // For counting total number of pulses on each Chanel
+     long pulsePeriod[NO_OF_CHANNELS];    // For counting number of pulses betseen every e-mail update (day) on each chanel
    } meterData;
 
 volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable used in interruptfunction
@@ -154,14 +192,6 @@ volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable use
  * >>>>>>>>>>>>>>>>>   S E T     C O N F I G U R A T I O N   D E F A U L T S  <<<<<<<<<<<<<<<<<<<<<<<<
  * Configuration is "hardcoded" to minimize sketch size
  */
- void setConfigurationDefaults() {
-  for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-    if ( ii < NO_OF_CHANNELS - NO_OF_EM23_METERS)
-      PPKW[ii] = 1000;
-    else
-      PPKW[ii] = 100;
-    }
-}
 
 /*
  * >>>>>>>>>>>>>>>>>   S E T     M E T E R   D A T A     D E F A U L T   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -171,8 +201,8 @@ volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable use
 void setMeterDataDefaults() {
     meterData.structureVersion = 10 * DATA_STRUCTURE_VERSION + NO_OF_CHANNELS;
     for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-      meterData.kWhTotal[ii] = 0.00;    // TO_BE_REMOVED exchange "random( 1000, 9999999) / 100" with "0.00"
-      meterData.kWhPeriod[ii] = 0.00;    // TO_BE_REMOVED exchange "random( 1000, 9999999) / 100" with "0.00"
+      meterData.pulseTotal[ii] = 0;
+      meterData.pulsePeriod[ii] = 0;
     }
   int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
 }
@@ -181,16 +211,26 @@ void setMeterDataDefaults() {
  * >>>>>>>>>>>>>>>>   G E T     Q U E R Y    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<    
  */
 void getQuery(EthernetClient localWebClient) {
-  int meterNumber = localWebClient.parseInt(SKIP_ALL, "=");
-  if ( 1 <= meterNumber <= NO_OF_CHANNELS ) {
-    float meterValue = localWebClient.parseFloat(SKIP_ALL, " ");
-    if ( 0.0 < meterValue < 99999.99) {
-      meterData.kWhTotal[meterNumber - 1] = (double)meterValue;
+  int meterNumber = localWebClient.parseInt();
                                                               #ifdef WEB_DEBUG
-                                                              Serial.print(P("Meter Number: "));
+                                                              Serial.print(P("\nQuery GET -  Integer for meterNumber passed:  "));
+                                                              Serial.println(meterNumber);
+                                                              #endif
+  if ( 1 <= meterNumber && meterNumber <= NO_OF_CHANNELS ) {
+    long meterValue = localWebClient.parseInt();
+                                                              #ifdef WEB_DEBUG
+                                                              Serial.print(P("\nQuery GET -  Integer for value passed:  "));
+                                                              Serial.println(meterValue);
+                                                                if ( meterNumber == 1 && meterValue == 0)
+                                                                setMeterDataDefaults();
+                                                              #endif
+     if ( 0 <= meterValue && meterValue < 9999999) {
+      meterData.pulseTotal[meterNumber - 1] = meterValue * (PPKW[meterNumber - 1] / 100);
+                                                              #ifdef WEB_DEBUG
+                                                              Serial.print(P("\n\nMeter Number: "));
                                                               Serial.print(meterNumber);
                                                               Serial.print(P(" Value: ")); 
-                                                              Serial.println(meterData.kWhTotal[meterNumber - 1]);
+                                                              Serial.println(meterData.pulseTotal[meterNumber - 1]);
                                                               #endif
     }
   }
@@ -213,7 +253,8 @@ void updateGoogleSheets() {
     
     webHookClient.print(P("GET /energyRegistrations/updateEnergyRegistrations?function=updateSheet&dataString="));
     for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-      webHookClient.print(meterData.kWhTotal[ii]);
+      double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
+      webHookClient.print(meterTotal);
       if ( ii < NO_OF_CHANNELS - 1) {
         webHookClient.print(P(","));
       } 
@@ -249,11 +290,13 @@ void updateGoogleSheets() {
 }
 /*
  * ######################  I N T E R R U P T    F U N C T I O N  -   B E G I N     ####################
- * When a LOW pulse triggers the interrupt pin, stastus on all channals are read, as long as the pulse on the interrupt pin 
- * is active (LOW) AND the channal hasn't change to LOW.
+ * When a LOW pulse triggers the interrupt pin, status on all channels are read, as long as the pulse on the interrupt pin 
+ * is active (LOW). If a channel has been read as active (LOW), it will not be re-read.
  * Explanation:
- * When more pulses for different energy meters arrives and overlapping each other , the pulse that triggers the read of Chanels 
- * will stay active LOW. When reading the channals over and over with out "resettng" the state, that way all pulses will be read.
+ * When more pulses from different energy meters arrives and overlapping each other, the trigger pulse will stay active LOW 
+ * as long as one of the pulses from the energy meters are low. 
+ * When reading the channels over and over, without re-reading channels that allready has been read active (low), 
+ * pulses on all channels will be read
  */
 
 void readChannelPins() {
@@ -277,6 +320,7 @@ void readChannelPins() {
  */
 void setup() {
   Serial.begin(115200);
+  Serial.println(P(SKETCH_VERSION));
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
                                                               #ifdef DEBUG
@@ -289,14 +333,10 @@ void setup() {
                                                                 ;  // In order to prevent unattended execution, wait for [Enter].
                                                               }
                                                               #endif
-  for (int ii=0; ii < NO_OF_CHANNELS; ii++) {  // Initialize input channels - and counters
+  for (int ii=0; ii < NO_OF_CHANNELS; ii++) {  // Initialize input channels - and counter flagss
     pinMode(channelPin[ii], INPUT_PULLUP);
     channelState[ii] = HIGH;
   }
-
-
-  setConfigurationDefaults();  // Initialize PPKW values
-
 
 /*
  * Setup SD card communication ad see if card is present and can be initialized
@@ -318,6 +358,12 @@ void setup() {
     setMeterDataDefaults();
 
 /*
+ * Initialize variables for handling SD updates
+ */
+  SD_WriteCounter = 0;
+  SD_LastUpdated = millis();
+
+/*
  * Initiate Ethernet connection
  * Static IP is used to reduce sketch size
  */
@@ -336,6 +382,11 @@ void setup() {
   pinMode(INTERRUPT_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), readChannelPins, FALLING);
 
+  /*
+   * Initialize variable for blinking LED_BUILTIN on every puls registration
+   */
+  led_Buildin_On = 0;
+
   digitalWrite(LED_BUILTIN, LOW);
 }
 
@@ -350,31 +401,54 @@ void setup() {
  */
 void loop() {
   boolean reqToPush = false;
-  
 /*
  * >>>>>>>>>>>>>>>>>>>>>>>>>  C o u n i n g    m o d u l e   -   B E G I N     <<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
  */
 
  
   for (int ii = 0; ii < NO_OF_CHANNELS; ii++) {
     if ( !channelState[ii]) {
       channelState[ii] = HIGH;
+      led_Buildin_On = millis();
       digitalWrite(LED_BUILTIN, HIGH);
-      meterData.kWhTotal[ii] += 1.000 / (double)PPKW[ii];
-      meterData.kWhPeriod[ii] += 1.000 / (double)PPKW[ii];
-      int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
+
+      SD_WriteCounter++;
+
+      meterData.pulseTotal[ii]++;
+      meterData.pulsePeriod[ii]++;
                                                               #ifdef COUNT_DEBUG
-                                                              Serial.print(P("Total kWh for channel "));
+                                                              if ( ii == 0)
+                                                                Serial.println();
+                                                              Serial.print(P("Total pulses / kWh for channel "));
                                                               Serial.print( ii +1);
                                                               Serial.print(P(": "));
-                                                              Serial.println(meterData.kWhTotal[ii], 3);
+                                                              Serial.print(meterData.pulseTotal[ii]);
+                                                              Serial.print(P(" / "));
+                                                              double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
+                                                              Serial.println(meterTotal, 3);
                                                               #endif
-      digitalWrite(LED_BUILTIN, LOW);
     }
   }
-  
+
 /*
- * >>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>  C o u n i n g    m o d u l e   -   E N D      <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ */
+
+
+  if (millis() > led_Buildin_On + 150)
+    digitalWrite(LED_BUILTIN, LOW);
+  
+  if ( SD_WriteCounter >= SD_UPDATE_COUNTS  || millis() > SD_LastUpdated + TIME_BETWEEN_SD_UPDATES && SD_WriteCounter > 0 ) {
+    int characters = SD_reWriteAnything(DATA_FILE_NAME, meterData);
+    SD_WriteCounter = 0;
+    SD_LastUpdated = millis();
+  }
+
+/*
+ * >>>>>>>>>>>>>>>>>>>>>>>>>> W E B     S E R V E R     B E G I N    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+ * >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
  */
   EthernetClient localWebClient = localWebServer.available();
   
@@ -421,7 +495,7 @@ void loop() {
 
         // "200 OK" means the resource was located on the server and the browser (or service consumer) should expect a happy response
                                                               #ifdef WEB_DEBUG
-                                                              Serial.println(P("\n\nGot Keyword sending: 200 OK\n\n"));
+                                                              Serial.println(P("\n\nGot Keyword sending: 200 OK\n"));
                                                               #endif
 /*        
  *   Send a standard http response header
@@ -436,17 +510,30 @@ void loop() {
  *  
  *  
  */
-        char *energyMeter[] = { "Kontor 1.", "Vaerksted", "Garage", "Bryggers", "Kontor", "Kraft", "Varmepumpe"};
+
+                                                              #ifdef WEB_DEBUG
+                                                              Serial.println(P("\nSend htmp page, displaying values\n"));
+                                                              #endif
+
         if ( reqToPush == true)
-          localWebClient.println(P("<HTML><head><title>PostToGoogle</title></head><body><h1>Posting following to to Google Sheets</h1>"));
+          localWebClient.println(P("<HTML><head><title>PostToGoogle</title></head><body><h1>Posting following to Google Sheets</h1>"));
         else
           localWebClient.println(P("<HTML><head><title>MeterValues</title></head><body><h1>Energy meter values</h1>"));
+
         for ( int ii = 0; ii < NO_OF_CHANNELS; ii++) {
-          localWebClient.println(P("<br><b>"));
-          localWebClient.println(energyMeter[ii]);
-          localWebClient.println(P(": </b>"));
-          localWebClient.println(meterData.kWhTotal[ii]);
-          localWebClient.println(P("</b>: </b> "));
+
+          localWebClient.println(P("<br><b>Meter </b>"));
+          localWebClient.println(ii + 1);
+          localWebClient.println(P("<b>:  </b>"));
+          double meterTotal = (double)meterData.pulseTotal[ii] / (double)PPKW[ii];
+          localWebClient.println(meterTotal);
+          localWebClient.print(P("<form action='/meterValue?' method='GET'>New value: <input type=text name='meter"));
+          char meter[2];
+          sprintf(meter, "%i", ii + 1);
+          localWebClient.print(meter);
+          localWebClient.println(P("'/> <input type=submit value='Opdater'/></form>"));
+// No endtag for <br> !?          localWebClient.println(P("</br>"));
+
 
         }
         // max length:    -----------------------------------------------------------------------------------------------------------------------------------------------------  (149 chars)
@@ -458,10 +545,10 @@ void loop() {
     }
 
 /*    
- *     Not verified if localWebClient.flush() actually empties the stream, therefor explicie read all characters.
+ *     Not verified if localWebClient.flush() actually empties the stream, therefor explicite read all characters.
  */
                                                               #ifdef WEB_DEBUG  // TO_BE_REMOVED
-                                                              Serial.println(">> Reading available chars ><<<");
+                                                              Serial.println(">> Reading available chars > Verifying flush, by emptying stream <<<");
                                                               #endif
 
     while ( localWebClient.available()) {
