@@ -15,12 +15,15 @@ This is against all recomendations, saying Interruptfunctions should be very sho
 
 However, in order to handle the problem with overlapping pulses from more meters, the interruptfunction will active .
 Example: tree meters generate tree pulses as shown below:
+```bash
           _______        _______
 Meter #1:        |______|
              _______        _______
 Meter #2:           |______|
                 _______        _______
 Meter #3:              |______|
+
+```
 Eventhoug Meter #1 triggers the puls count, pulses will be registrated as olng as one of the Meters generate a pulse and hold the Interrupt active.
 
 
