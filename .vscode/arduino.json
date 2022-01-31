@@ -1,4 +1,0 @@
-{
-    "board": "arduino:avr:ethernet",
-    "port": "COM4"
-}
