@@ -29,6 +29,7 @@
  * 
  * Created:
  * 2020-11-19
+ */
 
 #define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.1"
 
@@ -114,10 +115,10 @@
  *                                    D E F I N E    D E G U G G I N G
  * ######################################################################################################################################
 */
-//#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
-//#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
+#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
+#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
 //#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
-
+#define ARDUINO_UNO_DEBUG  //If defined: MAC and IP address will be set accoring to the MAC address for the Arduino Ethernet shield
 /*
  * ######################################################################################################################################
  *                       C  O  N  F  I  G  U  T  A  B  L  E       D  E  F  I  N  I  T  I  O  N  S
