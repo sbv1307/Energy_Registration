@@ -31,15 +31,15 @@
  * 2020-11-19
  */
 
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.1"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.2"
 
 
 /*
  * Future modifications / add-on's
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
- * - Post powerup data to google sheets (data, and the comment (Power Up))
  * 
+ * 0.2.2 - Post powerup data to google sheets (data, and the comment (Power Up))
  * 0.2.1 - Cleaning up entries used for verifying pulscounts - No functional changes.
  * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
  *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
@@ -115,26 +115,26 @@
  *                                    D E F I N E    D E G U G G I N G
  * ######################################################################################################################################
 */
-#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress status informations
-#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
+//#define DEBUG        // If defined (remove // at line beginning) - Sketch await serial input to start execution, and print basic progress 
+                       //   status informations
+//#define WEB_DEBUG    // (Require definition of  DEBUG!) If defined - print detailed informatins about web server and web client activities
 //#define COUNT_DEBUG  // (Require definition of  DEBUG!)If defined - print detailed informatins about puls counting. 
-#define ARDUINO_UNO_DEBUG  //If defined: MAC and IP address will be set accoring to the MAC address for the Arduino Ethernet shield
+//#define ARDUINO_UNO_DEBUG  //If defined: MAC and IP address will be set accoring to the MAC address for the Arduino Ethernet shield
 /*
  * ######################################################################################################################################
  *                       C  O  N  F  I  G  U  T  A  B  L  E       D  E  F  I  N  I  T  I  O  N  S
  * ######################################################################################################################################
 */
 
-#define NO_OF_CHANNELS 7   // Number of energy meters connected
-
-#define SD_UPDATE_COUNTS 50  // Define how many pules to regisgter, before storing counts to SD Card
-#define TIME_BETWEEN_SD_UPDATES 1800000  // Time in millisecunds: 30 min = 30 x 60 x 1000 = 1800000 ms
-
-const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};  // define which pin numbers are used for input channels
-const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
-
 #define DATA_STRUCTURE_VERSION 2    // Version number to verify if data read from file corrospond to current structure defination.
 #define DATA_FILE_NAME "data.dat"  //The SD Library uses short 8.3 names for files. 
+
+#define NO_OF_CHANNELS 7                                                // Number of energy meters connected
+const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};               // define which pin numbers are used for input channels
+const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
+
+#define SD_UPDATE_COUNTS 50              // Define how many pules to regisgter, before storing counts to SD Card
+#define TIME_BETWEEN_SD_UPDATES 1800000  // Time in millisecunds: 30 min = 30 x 60 x 1000 = 1800000 ms
 
 #define INTERRUPT_PIN 2
 #define CHIP_SELECT_PIN 4
@@ -169,18 +169,23 @@ EthernetServer localWebServer(ONBOARD_WEB_SERVER_PORT);
  */
 unsigned long led_Buildin_On;
 
-
-int SD_WriteCounter;  // Counter used to derterminde when meterData are writen to
-unsigned long SD_LastUpdated;
+int SD_WriteCounter;            // Counter used to dertermine when meterData are to be writen to SD
+unsigned long SD_LastUpdated;   // Timer used to determine when meterData are to be writen to SD
 
 /*
  * Define structure for energy meter counters
+ * A remark for using the type (long) for counters. Using (int) would have been suficient, as metervaluse cannnot be
+ * larger than 99999.99.
+ * Howerver the choosen method of manually updating meter values, using the Arduino Ethernet library and the Serial.parseint(),
+ * to parse the intered meter value from the ethernet stream, parsing the value as (long).
+ * Experience showed that; "(int)variable = Serial.parseint();" did not work. The same for various attempts to convert (long) to (int).
+ * Using (long) was simply the easies solution, all thoug it requires more RAM.
  */
 struct data_t
    {
      int structureVersion;
      long pulseTotal[NO_OF_CHANNELS];    // For counting total number of pulses on each Chanel
-     long pulsePeriod[NO_OF_CHANNELS];    // For counting number of pulses betseen every e-mail update (day) on each chanel
+     long pulsePeriod[NO_OF_CHANNELS];   // For counting number of pulses betseen every e-mail update (day) on each chanel
    } meterData;
 
 volatile boolean channelState[NO_OF_CHANNELS];  // Volatile global vareiable used in interruptfunction
@@ -225,7 +230,7 @@ void getQuery(EthernetClient localWebClient) {
 /*
  * >>>>>>>>>>>>>>    U P D A T E     G O O G L E     S H E E T S    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
  */
-void updateGoogleSheets() {
+void updateGoogleSheets( boolean powerOn) {
 
   webHookClient.stop(); //close any connection before send a new request. This will free the socket on the WiFi shield
 
@@ -240,7 +245,10 @@ void updateGoogleSheets() {
       if ( ii < NO_OF_CHANNELS - 1) {
         webHookClient.print(P(","));
       } 
-    }  
+    }
+    if ( powerOn == true)
+      webHookClient.print(P(",PowerUP"));
+
     webHookClient.println(P(" HTTP/1.0"));
     webHookClient.println();
 
@@ -326,6 +334,8 @@ void setup() {
   if ( meterData.structureVersion != 10 * DATA_STRUCTURE_VERSION + NO_OF_CHANNELS) 
     setMeterDataDefaults();
 
+
+
 /*
  * Initialize variables for handling SD updates
  */
@@ -354,7 +364,11 @@ void setup() {
   /*
    * Initialize variable for blinking LED_BUILTIN on every puls registration
    */
-  led_Buildin_On = 0;
+  led_Buildin_On = millis();
+
+  boolean powerOn = true;
+  updateGoogleSheets( powerOn);
+
 
   digitalWrite(LED_BUILTIN, LOW);
 }
@@ -406,7 +420,7 @@ void loop() {
  */
 
 
-  if (millis() > led_Buildin_On + 150)
+  if (millis() > led_Buildin_On + (long)150)
     digitalWrite(LED_BUILTIN, LOW);
   
   if ( SD_WriteCounter >= SD_UPDATE_COUNTS  || millis() > SD_LastUpdated + TIME_BETWEEN_SD_UPDATES && SD_WriteCounter > 0 ) {
@@ -527,6 +541,7 @@ void loop() {
    * >>>>>>>>>>>>>>>>>>> U P D A T E     G O O G L E   S H E E T S    <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
    */
   if ( reqToPush == true) {
-    updateGoogleSheets();
+    boolean powerOn = false;
+    updateGoogleSheets( powerOn);
   }
 }
