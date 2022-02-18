@@ -1,0 +1,4 @@
+(sym_lib_table
+  (lib (name "ArduinoEthernet-rescue")(type "Legacy")(uri "C:/Users/Steen/Documents/KiCad/Projects/EnergyRegistration/ArduinoEthernet/ArduinoEthernet-rescue.lib")(options "")(descr ""))
+  (lib (name "ArduinoBoards")(type "Legacy")(uri "C:/Users/Steen/Documents/KiCad/Projects/EnergyRegistration/ArduinoEthernet/ArduinoBoards.lib")(options "")(descr ""))
+)
