@@ -31,7 +31,7 @@
  * 2020-11-19
  */
 
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.2"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.3"
 
 
 /*
@@ -39,6 +39,7 @@
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
  * 
+ * 0.2.3 - BUILTIN_LED has stopped working - NEED INVESTIGATION AND CODE IMPLEMTATION
  * 0.2.2 - Post powerup data to google sheets (data, and the comment (Power Up))
  * 0.2.1 - Cleaning up entries used for verifying pulscounts - No functional changes.
  * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
@@ -89,7 +90,7 @@
  * Pin 16 (A2):
  * Pin 17 (A3):
  * Pin 18 (A4):
- * Pin 19 (A5):
+ * Pin 19 (A5): LED_PIN used for indicating pulsecounts and other activity (powerUP or failure to bootup) (Replaces defective BUILTIN_LED)
  */
 
 
