@@ -28,6 +28,10 @@ fp-info-cache
 *.xml
 *.csv
 
+# Ignore GIT SUBMODULE
+*.gitmodules
+Hardware/library
+
 
 # For Arduino using VS Code
 .vscode/*.*

@@ -1,4 +1,4 @@
 (sym_lib_table
-  (lib (name "ArduinoEthernet-rescue")(type "Legacy")(uri "C:/Users/Steen/Documents/KiCad/Projects/EnergyRegistration/ArduinoEthernet/ArduinoEthernet-rescue.lib")(options "")(descr ""))
-  (lib (name "ArduinoBoards")(type "Legacy")(uri "C:/Users/Steen/Documents/KiCad/Projects/EnergyRegistration/ArduinoEthernet/ArduinoBoards.lib")(options "")(descr ""))
+  (lib (name "Local_MCU_Module_Library")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/symbols/Local_MCU_Module_Library.kicad_sym")(options "")(descr ""))
+  (lib (name "Local_misc_giogziro95")(type "Legacy")(uri "${KICAD_LOCAL_SYMBOL_DIR}/Local_misc_giogziro95.lib")(options "")(descr ""))
 )
