@@ -29,6 +29,21 @@ fp-info-cache
 *.csv
 
 
+# Ignore GIT SUBMODULE
+*.gitmodules
+.gitmodules
+Hardware/library
+
+# Generated files
+*.gbr
+*.drl
+gerbers
+*.bin
+*.elf
+*.zip
+*.map
+build
+
 # For Arduino using VS Code
 .vscode/*.*
 .vscode/arduino.json

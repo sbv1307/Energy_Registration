@@ -1,0 +1,4 @@
+(fp_lib_table
+  (lib (name "Local_MCU_Module_Library")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/footprints/Local_MCU_Module_Library.pretty")(options "")(descr ""))
+  (lib (name "Local_Connectors")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/footprints/Local_Connectors.pretty")(options "")(descr ""))
+)
