@@ -1,4 +1,6 @@
 (sym_lib_table
   (lib (name "Local_MCU_Module_Library")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/symbols/Local_MCU_Module_Library.kicad_sym")(options "")(descr ""))
-  (lib (name "Local_misc_giogziro95")(type "Legacy")(uri "${KICAD_LOCAL_SYMBOL_DIR}/Local_misc_giogziro95.lib")(options "")(descr ""))
+  (lib (name "Local_Miscellaneous_Library")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/symbols/Local_Miscellaneous_Library.kicad_sym")(options "")(descr ""))
+  (lib (name "Local_Device_Library")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/symbols/Local_Device_Library.kicad_sym")(options "")(descr ""))
+  (lib (name "Local_Transistor_BJT_Library")(type "KiCad")(uri "C:/Users/Steen/Documents/3 - My OTHER documents/Projects/energimåling/Hardware/library/symbols/Local_Transistor_BJT_Library.kicad_sym")(options "")(descr ""))
 )
