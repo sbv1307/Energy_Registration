@@ -31,14 +31,23 @@
  * 2020-11-19
  */
 
-#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V0.2.3"
+#define SKETCH_VERSION "Carlo Gavazzi energy meter Type EM23 and/or Type EM111 DIN - Energy registrations - V2.0.0"
 
 
 /*
  * Future modifications / add-on's
+ * - Re-define which PIN are to be used for LED. Considerations:
+ *   1: BuiltIn LED is hardwired to PIN 9
+ *   2: Pin 9 is a digital pin, suitable for input.
  * - When HTTP request has no or incorrect abs-path / function - load explnating HTML page for corret usage
  * - Make webHookServer IP address an port number configurable.
- * 
+ *
+ * 2.0.0 - Arduino SW project now merged with KiCad Hardware, and this version surpports the new HW design
+ *         1 - LED_BUILTIN on Pin #9 has stopped woring. Pin A3 will be used instead. LED_PIN changed to LED_PIN - 
+ *             HOWEVER!!! It has turned out, that it was set incrrrectly by the entrepreter. Hovering over the LED_BULTIN variable indicate it expands to 13 and not 9.
+ *             Setting LED_PIN to 9, makes the LED light.
+ *             Since the Hardware prototype, was made to use PIN 17, Pin 17 will be used for LED_PIN in this version.
+ *         2 - Channels extenced to 8 instead of 7. Noe includeing Pin A2 
  * 0.2.3 - BUILTIN_LED has stopped working - NEED INVESTIGATION AND CODE IMPLEMTATION
  * 0.2.2 - Post powerup data to google sheets (data, and the comment (Power Up))
  * 0.2.1 - Cleaning up entries used for verifying pulscounts - No functional changes.
@@ -80,17 +89,17 @@
  * Pin  6: Channel pin 3: Input for reading Open Collector output on Type EM111 DIN energy meter (1000 pulses per kWh)
  * Pin  7: Channel pin 4: Input for reading Open Collector output on Type EM111 DIN energy meter (1000 pulses per kWh)
  * Pin  8: Channel pin 5: Input for reading Open Collector output on Type EM111 DIN energy meter (1000 pulses per kWh)
- * Pin  9: Default defined as LED_BUILTIN. Used for indicating pulses.
+ * Pin  9: Default defined as LED_BUILTIN. NOT WORKING because LED_BUILTIN is defined as PIN 13. Now re-defined as PIN 17 
  * Pin 10: Chip select (CS) for SD card.
  * Pin 11: SPI.h library for MOSI (Master In Slave Out) 
  * Pin 12: SPI.h library for MISO (Master Out Slave In)
  * Pin 13: SPI.h library for SCK (Serial Clock).
  * Pin 14 (A0): Channel pin 6: Input for reading Open Collector output on Type EM23 DIN energy meter (100 pulses per kWh)
  * Pin 15 (A1): Channel pin 7: Input for reading Open Collector output on Type EM23 DIN energy meter (100 pulses per kWh)
- * Pin 16 (A2):
- * Pin 17 (A3):
+ * Pin 16 (A2): Channel pin 8: Input for reading Open Collector output on Type EM23 DIN energy meter (100 pulses per kWh)
+ * Pin 17 (A3): Defined as LED_PIN used for indicating pulsecounts and other activity (powerUP or failure to bootup) (Replaces defective  definition of LED_BUILTIN)
  * Pin 18 (A4):
- * Pin 19 (A5): LED_PIN used for indicating pulsecounts and other activity (powerUP or failure to bootup) (Replaces defective BUILTIN_LED)
+ * Pin 19 (A5):
  */
 
 
@@ -130,15 +139,16 @@
 #define DATA_STRUCTURE_VERSION 2    // Version number to verify if data read from file corrospond to current structure defination.
 #define DATA_FILE_NAME "data.dat"  //The SD Library uses short 8.3 names for files. 
 
-#define NO_OF_CHANNELS 7                                                // Number of energy meters connected
-const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15};               // define which pin numbers are used for input channels
-const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
+#define NO_OF_CHANNELS 8                                                // Number of energy meters connected
+const int channelPin[NO_OF_CHANNELS] = {3,5,6,7,8,14,15,16};               // define which pin numbers are used for input channels
+const int PPKW[NO_OF_CHANNELS] = {1000,1000,1000,1000,1000,100,100,100};    //Variable for holding Puls Pr Kilo Watt (PPKW) for each channel (energy meter)
 
 #define SD_UPDATE_COUNTS 50              // Define how many pules to regisgter, before storing counts to SD Card
 #define TIME_BETWEEN_SD_UPDATES 1800000  // Time in millisecunds: 30 min = 30 x 60 x 1000 = 1800000 ms
 
 #define INTERRUPT_PIN 2
 #define CHIP_SELECT_PIN 4
+#define LED_BUILTIN 17
 #define HTTP_PORT_NUMBER 80
 #define ONBOARD_WEB_SERVER_PORT 80
 
