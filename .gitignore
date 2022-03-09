@@ -30,9 +30,9 @@ fp-info-cache
 
 
 # Ignore GIT SUBMODULE
-*.gitmodules
-.gitmodules
-Hardware/library
+#*.gitmodules
+#.gitmodules
+# Hardware/library
 
 # Generated files
 *.gbr
