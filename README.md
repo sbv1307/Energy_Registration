@@ -1,4 +1,5 @@
-# Energy registration
+# **Energy registration**
+###### **Version 2.0.0**
 
 This Arduino project will monitor the open collector output on a number of Carlo Gavazzi energy meters Type EM23 DIN and/or Type EM111.
 The pulses will be counted and turned into number of kilo watt hours (kWh).
@@ -41,3 +42,38 @@ The "while pin 2 is low" loop read all non-read input pins, meaning: when a pin 
 When the puls (the puls in meter #3) is released, the ISR ends. Then main loop will update the counter for each readden input pin, at reset the the status for the input pin.
 
 
+ Version history:
+  * 2.0.0 - Arduino SW project now merged with KiCad Hardware, and this version surpports the new HW design
+ *         1 - LED_BUILTIN on Pin #9 has stopped woring. Pin A3 will be used instead. LED_PIN changed to LED_PIN - 
+ *             HOWEVER!!! It has turned out, that it was set incrrrectly by the entrepreter. Hovering over the LED_BULTIN variable indicate it expands to 13 and not 9.
+ *             Setting LED_PIN to 9, makes the LED light.
+ *             Since the Hardware prototype, was made to use PIN 17, Pin 17 will be used for LED_PIN in this version.
+ *         2 - Channels extenced to 8 instead of 7. Noe includeing Pin A2 
+ * 0.2.3 - BUILTIN_LED has stopped working - NEED INVESTIGATION AND CODE IMPLEMTATION
+ * 0.2.2 - Post powerup data to google sheets (data, and the comment (Power Up))
+ * 0.2.1 - Cleaning up entries used for verifying pulscounts - No functional changes.
+ * 0.2.0 - Meters, which only gives 100 pulses pr. kWh, were registered as if they gave a thousenth. Might be an issue by adding "1.000 / (double)PPKW[ii]" (0.01) to the previous counts.
+ *         Since 1.000 / "(double)PPKW[ii]" might now be exactly 0.01 but maybe 0.009nnnnnnnnn, which could sum up the deffrence.
+ *         SO - This version 0.2.0 will count pulses (integers). 
+ *         Notes to be taken here - Mixing the types long and int, can give strange results (sometimes).
+ *          - Implement: Remove SD update after each pulsecount, marked: "// V0.1.4_change (1)" in ver. 0.1.4
+ *          - Implement: Flashing LED_BUILTI handled by calls to millis(), marked : "// V0.1.4_change (3)" in ver. 0.1.4.
+ *          - SD Updates are done for every 10 pulses or every 30 minutes (only if pulses have been registred).
+ * 0.1.4 - In an attempt to investigate lost registrations, writing every update to SD will be changed (changes marked // V0.1.4_change):
+ *         1 - Remove SD update after each pulsecount marked: // V0.1.4_change (1)
+ *         2 - SD is updated after each call to HTTP GET meterValue request (http://<Arduino IP address>/meterValue) marked: // V0.1.4_change (2)
+ *         3 - Flashing the LED_BUILTI has handeled by the time it took to write to SD. Flashing LED_BUILTI will be handled by calls to millis() marked : // V0.1.4_change (3)
+ * 
+ * 0.1.3 - Due to capacity limitations in version 0.1.2, this version build upon version 0.1.1
+ *       - This version is to trace why pulse registrations are lost.
+ *       - Screesed in the HTML <form> element form Version 0.2.1 - Makes energymeter settings much easier
+ *       - Dividing entered metervalues by 100, to avodi having to enter dicimal point (a dot) when enter metervalues
+ *       - Corrected BUGs in getQuery(EthernetClient localWebClient)
+ *       - Error dinvestigations marked: TO_BE_REMOVED
+ *       - Added further #ifdef sections.
+ *       - Inserted a function call to setMeterDataDefaults in function getQuery. If Metervalue for Meter 1 is nigative, metervalues are reset
+ * 0.1.2 - N O T E !!!! - Changes exceeded limit for: Low memory available, stability problems may occur.
+ *         Change in HTML presentation of energy meter values. Describing text. e.g. "Værksted" added to the informaiotn: "Meter <n>".
+ *       - Introduces IP configuration for Arduino Ethernet shield attached to Arduino UNO. Define ARDUINO_UNO_DEBUG
+ * 0.1.1 - Web server and web client funktionality added.
+ * 0.1.0 - Initial commit - This versino is a merger of two lab tests: "EnergyRegistration" and "LocalWebHook-with-server-for-Arduino".
